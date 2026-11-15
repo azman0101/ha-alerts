@@ -27,6 +27,7 @@ Construire ou faire évoluer une app Android avec un cœur Rust, des bindings Ko
 Si Gradle échoue sur `checkAarMetadata` (dépendance qui exige compileSdk N+1) : ne pas monter compileSdk à l'aveugle, vérifier d'abord la plateforme installée (`sdkmanager --list_installed`) ; sinon rétrograder BOM Compose / lifecycle. Détails dans `references/pitfalls.md`.
 
 - Dépendances : `net.java.dev.jna:jna:<v>` en **`artifact { type = "aar" }`**, `kotlinx-coroutines-android`, Compose (BOM), lifecycle. `abiFilters` = cibles de cargo-ndk.
+- AGP 9+ active Kotlin intégré par défaut : ne pas appliquer `org.jetbrains.kotlin.android`/`kotlin-android` lorsqu'il est actif. Pour Compose, conserver `org.jetbrains.kotlin.plugin.compose` et `buildFeatures.compose = true`. Vérifier la version AGP et un éventuel opt-out avant de modifier un projet existant ; voir les [détails et sources](references/pitfalls.md#agp-9-et-kotlin-intégré).
 - Wrapper : télécharger Gradle dans un dossier temporaire et lancer `gradle wrapper`, sans l'installer sur le système.
 - Build : `JAVA_HOME=<jdk21> ./gradlew :app:assembleDebug`. Vérifier le contenu : `unzip -l app-debug.apk | grep '\.so'` doit montrer `lib<crate>.so` **et** `libjnidispatch.so`.
 - UI : Compose Material3, état dans un `ViewModel` (`StateFlow`) ; le callback UniFFI arrive sur un thread Rust → n'y faire que `state.update`.
@@ -36,6 +37,7 @@ Pour créer ou modifier un workflow APK, lire [references/github-actions-signing
 L'exemple complet [assets/android-apk.yml](assets/android-apk.yml) utilise `app_core` comme nom de crate illustratif : adapter les chemins, noms, module Gradle, ABIs et versions au projet. Il reste un modèle, pas un workflow actif ni une dépendance à une application particulière.
 
 - Faire tourner les mêmes scripts localement et dans CI ; si `build-android.sh` appelle déjà `gen-kotlin.sh`, ne pas lancer ce dernier deux fois.
+- Copier [assets/verify-apk.py](assets/verify-apk.py) dans `scripts/verify-apk.py` du projet pour partager la vérification des bibliothèques natives entre local et CI.
 - Avant de signer un APK destiné à remplacer une installation existante, identifier et réutiliser son keystore. Même `applicationId` et certificat, `versionCode` non inférieur ; ne pas générer une nouvelle clé pour corriger un problème CI.
 - Préserver la clé hors Git, la sauvegarder, l'envoyer via `gh secret set` seulement dans le dépôt demandé et vérifier le certificat de l'APK avec `apksigner`. Les secrets GitHub ne constituent pas une sauvegarde récupérable.
 - Vérifier les `.so` Rust **et JNA pour chaque ABI**, publier un artefact nommé explicitement `shared` ou `temporary`, vérifier le résultat du run et fournir le lien de téléchargement.

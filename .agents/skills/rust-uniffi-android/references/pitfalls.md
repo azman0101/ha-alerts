@@ -11,8 +11,20 @@
 | `adb connect` « failed to connect » alors que le ping passe | port de connexion périmé ou hôte non appairé | `adb pair` avec le port/ code de la boîte « Associer », puis le port de l'écran principal |
 | `adb: no such file` avec `$ADB -s …` | variable contenant commande + arguments en zsh | utiliser une fonction `adb(){ <chemin> -s IP:PORT "$@"; }` |
 | Gradle : Java trop récent/ancien | JDK 26 par défaut | `JAVA_HOME` = JDK 21 |
+| `Cannot add extension with name 'kotlin'` avec AGP 9+ | Plugin `org.jetbrains.kotlin.android` appliqué en plus de Kotlin intégré | Retirer ce plugin si Kotlin intégré est actif ; conserver le plugin Compose |
 
 Versions utilisées (oct. 2026) : AGP 9.4.1, Kotlin 2.4.21, Gradle 9.8.1, UniFFI 0.32, JNA 5.19.1, NDK 30, compileSdk 36. Les revérifier (maven-metadata.xml) avant de les figer.
+
+## AGP 9 et Kotlin intégré
+
+[AGP 9 active Kotlin intégré par défaut](https://developer.android.com/build/migrate-to-built-in-kotlin).
+Dans ce mode, appliquer `com.android.application` sans
+`org.jetbrains.kotlin.android` (ni son alias `kotlin-android`). Pour Compose,
+appliquer aussi [`org.jetbrains.kotlin.plugin.compose`](https://developer.android.com/develop/ui/compose/setup-compose-dependencies-and-compiler)
+avec une version correspondant à Kotlin et activer `buildFeatures.compose = true`.
+Le support Kotlin intégré remplace le plugin Android Kotlin, pas le compilateur
+Compose. Pour AGP 8 ou un projet ayant explicitement désactivé Kotlin intégré,
+vérifier la configuration existante avant de retirer le plugin Android Kotlin.
 
 ## CI APK et signature
 

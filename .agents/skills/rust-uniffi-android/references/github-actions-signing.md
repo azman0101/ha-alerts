@@ -6,6 +6,8 @@ Lire `AGENTS.md`, les scripts, `Cargo.lock`, le catalogue Gradle et le wrapper a
 adaptation. [../assets/android-apk.yml](../assets/android-apk.yml) est un modèle générique
 pour une crate illustrative `app_core`, pas une spécification universelle. Il dépend des scripts du
 projet : `scripts/build-android.sh` et `scripts/gen-kotlin.sh`.
+Copier aussi [../assets/verify-apk.py](../assets/verify-apk.py) vers
+`scripts/verify-apk.py` : le workflow et les builds locaux utilisent ce même contrôle.
 Ces scripts doivent exister dans le projet cible ; adapter aussi le préfixe des
 variables/secrets `APK_*`, le module `:app` et tous les chemins de filtre/artéfact.
 Ne pas supposer que le projet est à la racine d'un monorepo.
@@ -99,7 +101,11 @@ cert_file=$(mktemp)
 trap 'rm -f "$cert_file"' EXIT
 keytool -exportcert -keystore "$APK_KEYSTORE_FILE" -alias "$APK_KEY_ALIAS" \
   -storepass:env APK_KEYSTORE_PASSWORD > "$cert_file"
-cert_sha256=$(shasum -a 256 "$cert_file" | awk '{print $1}')
+if command -v sha256sum >/dev/null 2>&1; then
+  cert_sha256=$(sha256sum "$cert_file" | awk '{print $1}')
+else
+  cert_sha256=$(shasum -a 256 "$cert_file" | awk '{print $1}')
+fi
 base64 < "$APK_KEYSTORE_FILE" | gh secret set APK_KEYSTORE_BASE64 --repo "$signing_repo"
 printf '%s' "$APK_KEYSTORE_PASSWORD" | gh secret set APK_KEYSTORE_PASSWORD --repo "$signing_repo"
 printf '%s' "$APK_KEY_ALIAS" | gh secret set APK_KEY_ALIAS --repo "$signing_repo"
@@ -155,9 +161,19 @@ Pour une livraison attendue comme signée, une absence de clé doit échouer, pa
 silencieusement substituer une nouvelle identité. Ne pas mettre les clés dans les
 caches Gradle/Rust ni dans les artefacts ; supprimer le fichier restauré même en échec.
 
-Le modèle de workflow vérifie directement le ZIP. Son paramètre `RUST_LIBRARY` doit
-correspondre au nom de sortie de la crate (`libapp_core.so` dans l’exemple). Il doit exiger des entrées non vides pour **chaque** ABI :
-`lib/<abi>/lib<crate>.so` et `lib/<abi>/libjnidispatch.so` (JNA en AAR).
+Le modèle de workflow appelle `scripts/verify-apk.py`, copié depuis les assets du
+skill. Son paramètre `RUST_LIBRARY` doit correspondre au nom de sortie de la crate
+(`libapp_core.so` dans l’exemple). Le script exige des entrées non vides pour
+**chaque** ABI : `lib/<abi>/lib<crate>.so` et `lib/<abi>/libjnidispatch.so` (JNA en
+AAR). Une entrée absente ou vide produit un message indiquant son chemin et un
+code de sortie non nul. Après le build local, lancer le même contrôle depuis la
+racine du projet, avec les mêmes ABIs que cargo-ndk et `abiFilters` :
+
+```bash
+python3 scripts/verify-apk.py android/app/build/outputs/apk/debug/app-debug.apk \
+  --library libapp_core.so --abis arm64-v8a x86_64
+```
+
 Ne pas se contenter de trouver un seul `.so` dans l'APK. Pour le certificat :
 
 ```bash
