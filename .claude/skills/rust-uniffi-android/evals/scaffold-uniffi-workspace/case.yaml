@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: scaffold-uniffi-workspace
+expected_outcome: |
+  Workspace with cdylib+lib crate, proc-macros only (no .udl), setup_scaffolding, tokio async export, separate uniffi-bindgen crate, scripts for bindings and cargo-ndk.
