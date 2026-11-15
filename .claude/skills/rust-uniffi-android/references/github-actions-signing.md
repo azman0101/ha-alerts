@@ -3,14 +3,14 @@
 ## Choisir et adapter le workflow
 
 Lire `AGENTS.md`, les scripts, `Cargo.lock`, le catalogue Gradle et le wrapper avant
-adaptation. [../assets/heos-apk.yml](../assets/heos-apk.yml) est un exemple complet
-issu de HEOS Fader, pas une spécification universelle. Il dépend des scripts du
-projet : `scripts/build-android.sh`, `scripts/gen-kotlin.sh`, `scripts/verify-apk.py`.
-Ces fichiers doivent exister dans le projet cible ; adapter aussi le préfixe des
-variables/secrets `HEOS_*`, le module `:app` et tous les chemins de filtre/artéfact.
+adaptation. [../assets/android-apk.yml](../assets/android-apk.yml) est un modèle générique
+pour une crate illustrative `app_core`, pas une spécification universelle. Il dépend des scripts du
+projet : `scripts/build-android.sh` et `scripts/gen-kotlin.sh`.
+Ces scripts doivent exister dans le projet cible ; adapter aussi le préfixe des
+variables/secrets `APK_*`, le module `:app` et tous les chemins de filtre/artéfact.
 Ne pas supposer que le projet est à la racine d'un monorepo.
 
-Versions validées pour cet exemple en novembre 2026 : JDK 21, API/build-tools 36,
+Exemple de versions compatibles (à adapter aux contraintes du projet) : JDK 21, API/build-tools 36,
 NDK `30.0.16248370`, cargo-ndk `4.1.2`, Gradle `9.8.1`. Ce sont des versions connues,
 pas une invitation à mettre à jour celles d'un autre projet. Les actions sont
 épinglées par SHA ; vérifier leurs entrées et leur disponibilité avant de les remplacer.
@@ -66,10 +66,11 @@ une fois un keystore dédié hors dépôt (exemple Bash, JDK disponible dans le 
 umask 077
 mkdir -p "$HOME/.config/my-app"
 test ! -e "$HOME/.config/my-app/signing.keystore" || exit 1
-export HEOS_KEYSTORE_PASSWORD=$(openssl rand -hex 32)
+APK_KEYSTORE_PASSWORD=$(openssl rand -hex 32)
+export APK_KEYSTORE_PASSWORD
 keytool -genkeypair -noprompt -storetype PKCS12 \
   -keystore "$HOME/.config/my-app/signing.keystore" -alias myapp \
-  -storepass:env HEOS_KEYSTORE_PASSWORD -keypass:env HEOS_KEYSTORE_PASSWORD \
+  -storepass:env APK_KEYSTORE_PASSWORD -keypass:env APK_KEYSTORE_PASSWORD \
   -keyalg RSA -keysize 3072 -validity 10000 -dname 'CN=My Android App'
 ```
 
@@ -78,33 +79,33 @@ avant de fermer le shell. Ne pas exécuter cette génération pour une app exist
 Ne jamais committer `*.jks`, `*.keystore` ou un fichier d'environnement contenant
 les mots de passe. Ne pas afficher les secrets dans les logs ni utiliser `set -x`.
 
-## Envoyer une identité existante depuis le Mac avec gh
+## Envoyer une identité existante depuis la machine de build avec gh
 
 Configurer `JAVA_HOME` sur le JDK de build, avec `keytool` dans le PATH. Le script
-ci-dessous tourne sur le Mac qui possède déjà la clé ; aucun SSH ni setup Termux
-n'est nécessaire. Adapter le dépôt, le chemin et l'alias AVANT exécution. Il ne crée
+ci-dessous tourne sur la machine qui possède déjà la clé. Définir `SIGNING_REPOSITORY` (format `propriétaire/nom`), puis adapter le chemin et l’alias AVANT exécution. Il ne crée
 pas de clé et n'écrit rien dans le dépôt.
 
 ```bash
 set -euo pipefail
 umask 077
-signing_repo=azman0101/heos-uniffi
-export HEOS_KEYSTORE_FILE="$HOME/.android/debug.keystore"
-export HEOS_KEY_ALIAS=androiddebugkey
-export HEOS_KEYSTORE_PASSWORD=android # uniquement pour ce debug keystore existant
-# Si le mot de passe de clé diffère de celui du keystore, définir HEOS_KEY_PASSWORD.
-test -f "$HEOS_KEYSTORE_FILE"
+: "${SIGNING_REPOSITORY:?Définir SIGNING_REPOSITORY avec le dépôt propriétaire/nom souhaité}"
+signing_repo="$SIGNING_REPOSITORY"
+export APK_KEYSTORE_FILE="$HOME/.android/debug.keystore"
+export APK_KEY_ALIAS=androiddebugkey
+export APK_KEYSTORE_PASSWORD=android # uniquement pour ce debug keystore existant
+# Si le mot de passe de clé diffère de celui du keystore, définir APK_KEY_PASSWORD.
+test -f "$APK_KEYSTORE_FILE"
 cert_file=$(mktemp)
 trap 'rm -f "$cert_file"' EXIT
-keytool -exportcert -keystore "$HEOS_KEYSTORE_FILE" -alias "$HEOS_KEY_ALIAS" \
-  -storepass:env HEOS_KEYSTORE_PASSWORD > "$cert_file"
+keytool -exportcert -keystore "$APK_KEYSTORE_FILE" -alias "$APK_KEY_ALIAS" \
+  -storepass:env APK_KEYSTORE_PASSWORD > "$cert_file"
 cert_sha256=$(shasum -a 256 "$cert_file" | awk '{print $1}')
-base64 < "$HEOS_KEYSTORE_FILE" | gh secret set HEOS_KEYSTORE_BASE64 --repo "$signing_repo"
-printf '%s' "$HEOS_KEYSTORE_PASSWORD" | gh secret set HEOS_KEYSTORE_PASSWORD --repo "$signing_repo"
-printf '%s' "$HEOS_KEY_ALIAS" | gh secret set HEOS_KEY_ALIAS --repo "$signing_repo"
-printf '%s' "$cert_sha256" | gh secret set HEOS_CERT_SHA256 --repo "$signing_repo"
-if [ -n "${HEOS_KEY_PASSWORD:-}" ]; then
-  printf '%s' "$HEOS_KEY_PASSWORD" | gh secret set HEOS_KEY_PASSWORD --repo "$signing_repo"
+base64 < "$APK_KEYSTORE_FILE" | gh secret set APK_KEYSTORE_BASE64 --repo "$signing_repo"
+printf '%s' "$APK_KEYSTORE_PASSWORD" | gh secret set APK_KEYSTORE_PASSWORD --repo "$signing_repo"
+printf '%s' "$APK_KEY_ALIAS" | gh secret set APK_KEY_ALIAS --repo "$signing_repo"
+printf '%s' "$cert_sha256" | gh secret set APK_CERT_SHA256 --repo "$signing_repo"
+if [ -n "${APK_KEY_PASSWORD:-}" ]; then
+  printf '%s' "$APK_KEY_PASSWORD" | gh secret set APK_KEY_PASSWORD --repo "$signing_repo"
 fi
 ```
 
@@ -112,20 +113,20 @@ fi
 sauvegarde indépendante : GitHub ne permet pas de récupérer les secrets en clair.
 L'export du certificat valide le mot de passe du keystore, pas nécessairement celui
 de la clé privée ; confirmer avec un vrai build signé. Si un ancien secret optionnel
-`HEOS_KEY_PASSWORD` est obsolète, le corriger ou le supprimer explicitement.
+`APK_KEY_PASSWORD` est obsolète, le corriger ou le supprimer explicitement.
 
 ## Même configuration Gradle en local et dans CI
 
 Dans le bloc `android` de `app/build.gradle.kts` :
 
 ```kotlin
-val signingPath = System.getenv("HEOS_KEYSTORE_FILE")
+val signingPath = System.getenv("APK_KEYSTORE_FILE")
 if (!signingPath.isNullOrBlank()) {
     val shared = signingConfigs.create("shared") {
         storeFile = file(signingPath) // fournir un chemin absolu
-        storePassword = requireNotNull(System.getenv("HEOS_KEYSTORE_PASSWORD"))
-        keyAlias = requireNotNull(System.getenv("HEOS_KEY_ALIAS"))
-        keyPassword = System.getenv("HEOS_KEY_PASSWORD")
+        storePassword = requireNotNull(System.getenv("APK_KEYSTORE_PASSWORD"))
+        keyAlias = requireNotNull(System.getenv("APK_KEY_ALIAS"))
+        keyPassword = System.getenv("APK_KEY_PASSWORD")
             ?.takeIf { it.isNotBlank() } ?: storePassword
     }
     buildTypes.getByName("debug").signingConfig = shared
@@ -133,7 +134,7 @@ if (!signingPath.isNullOrBlank()) {
 ```
 
 Piège réel : un secret GitHub absent, injecté via `env`, devient une chaîne vide.
-`System.getenv("HEOS_KEY_PASSWORD") ?: storePassword` ne suffit donc pas : il cause
+`System.getenv("APK_KEY_PASSWORD") ?: storePassword` ne suffit donc pas : il cause
 `Get Key failed` / `Given final block not properly padded`. Utiliser `takeIf` comme
 ci-dessus. Les variables locales doivent pointer sur le même keystore et alias
 que les secrets CI. Garder ce chemin explicite si une autre machine sert au build.
@@ -142,7 +143,7 @@ que `debug` et ne transforme pas une clé debug en clé de production.
 
 ## Frontière de confiance et vérifications
 
-Le workflow HEOS joint illustre une identité debug partagée. Ne pas exposer une
+Le modèle de workflow joint illustre une identité debug partagée. Ne pas exposer une
 clé de distribution à du code de PR non approuvé. Pour une vraie clé de production,
 séparer la compilation sans secrets et la signature sur une référence approuvée
 (push protégé ou environnement avec approbation). Ne pas employer
@@ -154,7 +155,8 @@ Pour une livraison attendue comme signée, une absence de clé doit échouer, pa
 silencieusement substituer une nouvelle identité. Ne pas mettre les clés dans les
 caches Gradle/Rust ni dans les artefacts ; supprimer le fichier restauré même en échec.
 
-Le vérificateur ZIP doit exiger des entrées non vides pour **chaque** ABI :
+Le modèle de workflow vérifie directement le ZIP. Son paramètre `RUST_LIBRARY` doit
+correspondre au nom de sortie de la crate (`libapp_core.so` dans l’exemple). Il doit exiger des entrées non vides pour **chaque** ABI :
 `lib/<abi>/lib<crate>.so` et `lib/<abi>/libjnidispatch.so` (JNA en AAR).
 Ne pas se contenter de trouver un seul `.so` dans l'APK. Pour le certificat :
 
@@ -162,7 +164,7 @@ Ne pas se contenter de trouver un seul `.so` dans l'APK. Pour le certificat :
 "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app-debug.apk
 ```
 
-Comparer le SHA-256 du certificat DER à `HEOS_CERT_SHA256` (normaliser casse et
+Comparer le SHA-256 du certificat DER à `APK_CERT_SHA256` (normaliser casse et
 séparateurs si besoin). L'empreinte du certificat n'est pas celle du fichier APK.
 Télécharger l'artefact et utiliser `adb install -r` pour valider la mise à jour et
 la conservation des données, lorsque le téléphone est disponible et l'installation

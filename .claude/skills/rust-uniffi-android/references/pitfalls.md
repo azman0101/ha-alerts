@@ -14,14 +14,14 @@
 
 Versions utilisées (oct. 2026) : AGP 9.4.1, Kotlin 2.4.21, Gradle 9.8.1, UniFFI 0.32, JNA 5.19.1, NDK 30, compileSdk 36. Les revérifier (maven-metadata.xml) avant de les figer.
 
-## CI APK et signature (retour HEOS, novembre 2026)
+## CI APK et signature
 
 Voir [github-actions-signing.md](github-actions-signing.md) et le workflow d'exemple.
 
 | Symptôme | Cause à vérifier | Correction |
 |---|---|---|
-| `Get Key failed` / `Given final block not properly padded` dans CI seulement | Mot de passe de clé optionnel injecté comme chaîne vide | `System.getenv("HEOS_KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: storePassword` ; vérifier aussi les vrais mots de passe/alias |
+| `Get Key failed` / `Given final block not properly padded` dans CI seulement | Mot de passe de clé optionnel injecté comme chaîne vide | `System.getenv("APK_KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: storePassword` ; vérifier aussi les vrais mots de passe/alias |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | Certificat différent de l'app installée | Réutiliser son keystore et vérifier les empreintes ; ne pas régénérer la clé ni désinstaller par défaut |
 | Push de `.github/workflows/*` refusé par OAuth | Token `gh` sans scope `workflow` | `gh auth refresh --hostname github.com --scopes workflow` ; sans rapport avec la clé APK |
-| APK CI sans JNA ou sans une ABI | Vérification limitée à un seul `.so` | Exiger HEOS/Rust et `libjnidispatch.so` non vides pour chaque ABI |
+| APK CI sans JNA ou sans une ABI | Vérification limitée à un seul `.so` | Exiger Rust et `libjnidispatch.so` non vides pour chaque ABI |
 | APK d'une PR fork non compatible avec l'installation locale | Secrets de signature indisponibles | Identifier clairement l'artefact comme `temporary` ; signer une référence approuvée avec la clé partagée |
