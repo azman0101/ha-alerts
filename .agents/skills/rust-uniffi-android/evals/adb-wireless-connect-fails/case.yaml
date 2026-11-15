@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: adb-wireless-connect-fails
+expected_outcome: |
+  Explains pairing vs connect ports, pair with code, ports change, asks user instead of guessing, uses adb -s, install -r, am start, logcat/uiautomator checks, check foreground app before tapping.

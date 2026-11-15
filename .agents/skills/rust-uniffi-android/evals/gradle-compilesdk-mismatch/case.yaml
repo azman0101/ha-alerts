@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: gradle-compilesdk-mismatch
+expected_outcome: |
+  Explains the dependency needs a newer compileSdk than the installed platform; proposes downgrading lifecycle/Compose BOM or installing platform 37; checks installed platforms first.

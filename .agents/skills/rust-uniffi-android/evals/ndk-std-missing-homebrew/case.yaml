@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: ndk-std-missing-homebrew
+expected_outcome: |
+  Identifies Homebrew cargo shadowing the rustup toolchain, gives PATH fix with rustup toolchain bin and ANDROID_NDK_HOME.
