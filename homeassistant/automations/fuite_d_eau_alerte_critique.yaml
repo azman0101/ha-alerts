@@ -1,0 +1,119 @@
+# Automatisation Home Assistant : alerte fuite d'eau qui passe le mode Ne pas déranger.
+# Export de la configuration UI (Paramètres > Automatisations > Modifier en YAML).
+# À adapter : remplacer notify.mobile_app_mon_telephone par le service de votre téléphone
+# et la liste des capteurs (triggers + variable capteurs). Voir homeassistant/README.md.
+id: '1794753417408'
+alias: Fuite d'eau - Alerte critique
+description: 'Alerte le téléphone en cas de fuite (Matter + doublons HomeKit). Toutes les 15 s, jusqu''à « J''ai vu – arrêter
+  », ou arrêt automatique quand plus aucun capteur ne détecte d''eau (10 min max) : notification sur le canal Android « Fuite
+  d''eau » (sonnerie à choisir sur le téléphone, autorisée en Ne pas déranger) puis annonce vocale sur le flux alarme au volume
+  max. Exécutable à la main pour tester sans mouiller de capteur. Réglages : intervalle_s, duree_max_min.'
+triggers:
+- trigger: state
+  entity_id:
+  - binary_sensor.fuite_salle_de_bain_homekit
+  - binary_sensor.fuite_cuisine_homekit
+  - binary_sensor.fuite_wc_homekit
+  - binary_sensor.fuite_salle_de_bain
+  - binary_sensor.fuite_cuisine
+  - binary_sensor.fuite_wc
+  to: 'on'
+actions:
+- repeat:
+    sequence:
+    - action: notify.mobile_app_mon_telephone
+      data:
+        title: '{{ titre | default(''🧪 TEST – 💧 Fuite d’eau (action seule)'') }}{{ '' – rappel '' ~ repeat.index if repeat
+          is defined and repeat.index > 1 else '''' }}'
+        message: '{{ texte | default(''Test de la notification seule, depuis l’éditeur.'') }}'
+        data:
+          ttl: 0
+          priority: high
+          channel: Fuite d'eau
+          importance: high
+          tag: fuite_eau
+          sticky: 'true'
+          visibility: public
+          actions:
+          - action: '{{ action_ack | default(''ACK_FUITE_TEST'') }}'
+            title: J'ai vu – arrêter
+    - action: notify.mobile_app_mon_telephone
+      data:
+        message: TTS
+        data:
+          tts_text: '{{ annonce | default(''Ceci est un test de l’annonce fuite d’eau.'') }}'
+          media_stream: alarm_stream_max
+    - wait_for_trigger:
+      - trigger: event
+        id: ack
+        event_type: mobile_app_notification_action
+        event_data:
+          action: '{{ action_ack | default(''ACK_FUITE_TEST'') }}'
+      - trigger: template
+        id: sec
+        value_template: '{{ (not (est_test | bool)) and (capteurs | select(''is_state'', ''on'') | list | count == 0) }}'
+      timeout:
+        seconds: '{{ intervalle_s }}'
+      continue_on_timeout: true
+    - choose:
+      - conditions:
+        - condition: template
+          value_template: '{{ (wait.trigger is not none and wait.trigger.id == ''ack'') }}'
+        sequence:
+        - action: notify.mobile_app_mon_telephone
+          data:
+            message: stop_tts
+        - action: notify.mobile_app_mon_telephone
+          data:
+            message: clear_notification
+            data:
+              tag: fuite_eau
+        - action: notify.mobile_app_mon_telephone
+          data:
+            title: ✅ Alerte fuite acquittée
+            message: Acquittée à {{ now().strftime('%H:%M:%S') }}. Les annonces sont arrêtées.
+            data:
+              tag: fuite_eau_ack
+              timeout: 600
+      - conditions:
+        - condition: template
+          value_template: '{{ (not (est_test | bool)) and (capteurs | select(''is_state'', ''on'') | list | count == 0) }}'
+        sequence:
+        - action: notify.mobile_app_mon_telephone
+          data:
+            message: stop_tts
+        - action: notify.mobile_app_mon_telephone
+          data:
+            message: clear_notification
+            data:
+              tag: fuite_eau
+        - action: notify.mobile_app_mon_telephone
+          data:
+            title: 💧 Plus d’eau détectée – alerte arrêtée
+            message: 'Arrêt automatique à {{ now().strftime(''%H:%M:%S'') }} : plus aucun capteur ne détecte d’eau. Vérifie
+              quand même : {{ piece | default('''') }}.'
+            data:
+              tag: fuite_eau_ack
+              channel: Fuite d'eau - info
+              importance: default
+    until: '{{ (wait.trigger is not none and wait.trigger.id == ''ack'') or ((not (est_test | bool)) and (capteurs | select(''is_state'',
+      ''on'') | list | count == 0)) or repeat.index >= (repetitions | default(1)) | int }}'
+mode: single
+variables:
+  intervalle_s: 15
+  est_test: '{{ trigger.to_state is not defined }}'
+  piece: '{{ ''test'' if (est_test | bool) else (area_name(trigger.entity_id) or trigger.to_state.name) }}'
+  titre: '{{ (''🧪 TEST – '' if (est_test | bool) else '''') ~ ''💧 Fuite d’eau – '' ~ piece }}'
+  texte: '{{ ''Test manuel de l’alerte fuite (aucun capteur mouillé)'' if (est_test | bool) else ''Eau détectée par '' ~ trigger.to_state.name
+    }} à {{ now().strftime(''%H:%M:%S'') }}.'
+  annonce: '{{ ''Ceci est un test. '' if (est_test | bool) else '''' }}Alerte fuite d’eau, {{ piece }}.'
+  action_ack: ACK_FUITE_{{ now().timestamp() | int }}
+  duree_max_min: 10
+  repetitions: '{{ ((duree_max_min | int) * 60 / (intervalle_s | int)) | round(0, ''ceil'') | int }}'
+  capteurs:
+  - binary_sensor.fuite_salle_de_bain_homekit
+  - binary_sensor.fuite_cuisine_homekit
+  - binary_sensor.fuite_wc_homekit
+  - binary_sensor.fuite_salle_de_bain
+  - binary_sensor.fuite_cuisine
+  - binary_sensor.fuite_wc
